@@ -160,7 +160,14 @@ function renderObjectEditor({ root, path, obj, advancedUnlocked, onRiskyEdit }) 
         );
         tbody.appendChild(el("tr", {}, el("td", { class: "mono" }, k), el("td", {}, btn)));
       } else {
-        tbody.appendChild(el("tr", {}, el("td", { class: "mono" }, k), el("td", {}, el("span", { class: "muted" }, String(v))))));
+        tbody.appendChild(
+          el(
+            "tr",
+            {},
+            el("td", { class: "mono" }, k),
+            el("td", {}, el("span", { class: "muted" }, String(v)))
+          )
+        );
       }
     }
   };
@@ -241,4 +248,3 @@ export function renderRawPanel({ save, getAdvancedUnlocked, onRiskyEdit }) {
   openPath([]);
   return root;
 }
-

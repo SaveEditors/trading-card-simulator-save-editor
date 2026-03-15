@@ -191,11 +191,19 @@ async function loadSaveResult(result) {
 }
 
 async function doOpenFile() {
-  setStatus(null, "");
   try {
+    setStatus("warn", "Opening file picker...");
     const r = await openSaveFileAny();
+    if (!r) {
+      setStatus("warn", "File selection canceled.");
+      return;
+    }
     await loadSaveResult(r);
   } catch (e) {
+    if (e?.name === "AbortError") {
+      setStatus("warn", "File selection canceled.");
+      return;
+    }
     setStatus("bad", `Open failed: ${e?.message ?? String(e)}`);
   }
 }
@@ -210,6 +218,10 @@ async function doOpenFolder() {
       try {
         dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
       } catch (e) {
+        if (e?.name === "AbortError") {
+          setStatus("warn", "Folder selection canceled.");
+          return;
+        }
         // If permissions/user-activation blocks the picker, fall back to webkitdirectory input.
         setStatus("warn", `Folder picker blocked (${e?.name ?? "error"}). Trying fallback...`);
       }
