@@ -12,6 +12,7 @@ import { renderRawPanel } from "./ui/raw.js";
 const state = {
   save: null,
   source: null, // { mode, fileHandle?, dirHandle?, displayName, codec, originalBytes }
+  pendingChoices: null, // [{ save, source, meta? }]
   advancedUnlocked: false,
   riskyEdited: false,
 };
@@ -33,6 +34,52 @@ function setStatus(kind, text) {
     box.textContent = text;
     if (kind) box.classList.add(kind);
   }
+}
+
+function fmtBytes(n) {
+  const num = Number(n || 0);
+  if (!Number.isFinite(num) || num <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let v = num;
+  let u = 0;
+  while (v >= 1024 && u < units.length - 1) {
+    v /= 1024;
+    u += 1;
+  }
+  const digits = u === 0 ? 0 : v < 10 ? 2 : 1;
+  return `${v.toFixed(digits)} ${units[u]}`;
+}
+
+function hideSavePicker() {
+  state.pendingChoices = null;
+  const box = $("savePick");
+  const sel = $("savePickSelect");
+  if (sel) sel.innerHTML = "";
+  if (box) box.hidden = true;
+}
+
+function showSavePicker(choices) {
+  const box = $("savePick");
+  const sel = $("savePickSelect");
+  if (!box || !sel) return;
+  state.pendingChoices = Array.isArray(choices) ? choices.slice() : [];
+  sel.innerHTML = "";
+
+  const sorted = state.pendingChoices.slice().sort((a, b) => (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) || (b.meta?.size ?? 0) - (a.meta?.size ?? 0));
+  state.pendingChoices = sorted;
+
+  sorted.forEach((c, idx) => {
+    const opt = document.createElement("option");
+    const path = c?.meta?.path || c?.source?.displayName || `Candidate ${idx + 1}`;
+    const size = c?.meta?.size != null ? fmtBytes(c.meta.size) : "";
+    const stamp = c?.meta?.lastModified ? new Date(c.meta.lastModified).toLocaleString() : "";
+    opt.value = String(idx);
+    opt.textContent = `${path}${size ? ` · ${size}` : ""}${stamp ? ` · ${stamp}` : ""}`;
+    sel.appendChild(opt);
+  });
+
+  box.hidden = false;
+  setStatus("warn", `Multiple save candidates detected (${sorted.length}). Select the correct one, then click “Load Selected”.`);
 }
 
 async function nextFrame() {
@@ -317,10 +364,15 @@ async function backupOnLoadIfEnabled(source) {
 
 async function loadSaveResult(result) {
   if (!result) return;
+  if (result.choices) {
+    showSavePicker(result.choices);
+    return;
+  }
   if (result.error) {
     setStatus("bad", `Failed to decode save: ${result.error?.message ?? String(result.error)}`);
     return;
   }
+  hideSavePicker();
 
   const detect = detectTcgShopSave(result.save);
   if (!detect.ok) {
@@ -346,6 +398,7 @@ async function loadSaveResult(result) {
 
 async function doOpenFile() {
   try {
+    hideSavePicker();
     setStatus("warn", "Opening file picker...");
     const r = await openSaveFileAny();
     if (!r) {
@@ -364,6 +417,7 @@ async function doOpenFile() {
 
 async function doOpenFolder() {
   try {
+    hideSavePicker();
     setStatus("warn", "Opening folder picker...");
     await nextFrame();
 
@@ -540,6 +594,14 @@ function init() {
   $("btnOpenFolder").addEventListener("click", doOpenFolder);
   $("btnSaveDownload").addEventListener("click", doSaveDownload);
   $("btnSaveWriteBack").addEventListener("click", doSaveWriteBack);
+  $("btnLoadPick").addEventListener("click", async () => {
+    const idx = Number($("savePickSelect")?.value || 0) || 0;
+    const choice = state.pendingChoices?.[idx];
+    if (!choice) return;
+    if (state.save && !confirm("Load a different save and discard current unsaved edits?")) return;
+    await loadSaveResult(choice);
+  });
+  $("btnCancelPick").addEventListener("click", hideSavePicker);
 
   const folderBtn = $("btnOpenFolder");
   folderBtn.title = "Chrome/Edge desktop recommended. On unsupported browsers, use Open Save File.";

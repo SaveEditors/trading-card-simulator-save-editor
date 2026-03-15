@@ -1,5 +1,6 @@
 import { decodeToJson, encodeFromJson } from "./codec.js";
 import { nowStamp } from "./dom.js";
+import { detectTcgShopSave } from "./save.js";
 
 function supportsFilePicker() {
   return typeof window.showOpenFilePicker === "function";
@@ -54,7 +55,7 @@ async function tryReadFirstByte(file) {
   }
 }
 
-async function* walkDir(dirHandle, { maxDepth = 7, depth = 0 } = {}) {
+async function* walkDir(dirHandle, { maxDepth = 7, depth = 0, prefix = "" } = {}) {
   if (depth > maxDepth) return;
   let it = null;
   try {
@@ -66,8 +67,9 @@ async function* walkDir(dirHandle, { maxDepth = 7, depth = 0 } = {}) {
   try {
     for await (const [name, handle] of it) {
       if (shouldSkipName(name)) continue;
-      if (handle.kind === "file") yield { name, fileHandle: handle, depth };
-      else if (handle.kind === "directory") yield* walkDir(handle, { maxDepth, depth: depth + 1 });
+      const path = prefix ? `${prefix}/${name}` : name;
+      if (handle.kind === "file") yield { name, fileHandle: handle, depth, path };
+      else if (handle.kind === "directory") yield* walkDir(handle, { maxDepth, depth: depth + 1, prefix: path });
     }
   } catch {
     // Some folders can contain inaccessible/system entries; best-effort walk.
@@ -76,41 +78,71 @@ async function* walkDir(dirHandle, { maxDepth = 7, depth = 0 } = {}) {
 
 export async function openSaveFileAny() {
   if (supportsFilePicker()) {
-    const [handle] = await window.showOpenFilePicker({ multiple: false, excludeAcceptAllOption: false });
-    if (!handle) return null;
-    const { file, bytes } = await readFileHandle(handle);
-    const decoded = await decodeToJson(bytes);
-    return {
-      source: {
-        mode: "file",
-        fileHandle: handle,
-        dirHandle: null,
-        displayName: file.name,
-        codec: decoded.codec,
-        originalBytes: decoded.originalBytes,
-      },
-      save: decoded.json,
-    };
+    const handles = await window.showOpenFilePicker({ multiple: true, excludeAcceptAllOption: false });
+    if (!handles?.length) return null;
+
+    const choices = [];
+    let lastErr = null;
+    for (const handle of handles.slice(0, 30)) {
+      try {
+        const { file, bytes } = await readFileHandle(handle);
+        const decoded = await decodeToJson(bytes);
+        if (!detectTcgShopSave(decoded.json).ok) continue;
+        choices.push({
+          source: {
+            mode: "file",
+            fileHandle: handle,
+            dirHandle: null,
+            displayName: file.name,
+            codec: decoded.codec,
+            originalBytes: decoded.originalBytes,
+          },
+          save: decoded.json,
+          meta: { path: file.name, size: file.size, lastModified: file.lastModified },
+        });
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+
+    if (!choices.length) {
+      if (lastErr) throw lastErr;
+      throw new Error("No valid Trading Card Shop Simulator save found in the selected file(s).");
+    }
+    if (choices.length === 1) return choices[0];
+    return { choices };
   }
 
   // Fallback: <input type="file"> (no handle; download-only backups/saves)
   const input = document.createElement("input");
   input.type = "file";
+  input.multiple = true;
   return await new Promise((resolve) => {
     input.addEventListener("change", async () => {
-      const f = input.files?.[0];
-      if (!f) return resolve(null);
-      const ab = await f.arrayBuffer();
-      const bytes = new Uint8Array(ab);
-      try {
-        const decoded = await decodeToJson(bytes);
-        resolve({
-          source: { mode: "drop", fileHandle: null, dirHandle: null, displayName: f.name, codec: decoded.codec, originalBytes: decoded.originalBytes },
-          save: decoded.json,
-        });
-      } catch (e) {
-        resolve({ error: e });
+      const files = Array.from(input.files ?? []);
+      if (!files.length) return resolve(null);
+
+      const choices = [];
+      let lastErr = null;
+      for (const f of files.slice(0, 30)) {
+        try {
+          const ab = await f.arrayBuffer();
+          const bytes = new Uint8Array(ab);
+          const decoded = await decodeToJson(bytes);
+          if (!detectTcgShopSave(decoded.json).ok) continue;
+          choices.push({
+            source: { mode: "drop", fileHandle: null, dirHandle: null, displayName: f.name, codec: decoded.codec, originalBytes: decoded.originalBytes },
+            save: decoded.json,
+            meta: { path: f.name, size: f.size, lastModified: f.lastModified },
+          });
+        } catch (e) {
+          lastErr = e;
+        }
       }
+
+      if (!choices.length) return resolve({ error: lastErr ?? new Error("No valid save found in the selected file(s).") });
+      if (choices.length === 1) return resolve(choices[0]);
+      resolve({ choices });
     });
     input.click();
   });
@@ -128,12 +160,32 @@ async function decodeFirstDecodable(candidates) {
       const ab = await c.file.arrayBuffer();
       const bytes = new Uint8Array(ab);
       const decoded = await decodeToJson(bytes);
+      if (!detectTcgShopSave(decoded.json).ok) continue;
       return { ok: true, candidate: c, decoded };
     } catch (e) {
       lastErr = e;
     }
   }
   return { ok: false, error: lastErr ?? new Error("No decodable save payload found.") };
+}
+
+async function decodeValidChoices(candidates, { max = 60 } = {}) {
+  const valid = [];
+  let lastErr = null;
+
+  for (const c of candidates.slice(0, max)) {
+    try {
+      const ab = await c.file.arrayBuffer();
+      const bytes = new Uint8Array(ab);
+      const decoded = await decodeToJson(bytes);
+      if (!detectTcgShopSave(decoded.json).ok) continue;
+      valid.push({ candidate: c, decoded });
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  return { valid, lastErr };
 }
 
 export async function openSaveFolderFromDirectoryHandle(dirHandle) {
@@ -170,20 +222,29 @@ export async function openSaveFolderFromDirectoryHandle(dirHandle) {
   if (!candidates.length) return null;
   candidates.sort((a, b) => b.file.size - a.file.size);
 
-  const picked = await decodeFirstDecodable(candidates);
-  if (!picked.ok) throw picked.error;
-  const { candidate: c, decoded } = picked;
-  return {
-    source: {
-      mode: "folder",
-      fileHandle: c.fileHandle,
-      dirHandle,
-      displayName: c.file.name,
-      codec: decoded.codec,
-      originalBytes: decoded.originalBytes,
-    },
-    save: decoded.json,
+  const { valid, lastErr } = await decodeValidChoices(candidates, { max: 90 });
+  if (!valid.length) throw lastErr ?? new Error("No decodable save payload found.");
+
+  const asChoice = ({ candidate: c, decoded }) => {
+    const display = c.path || c.file.name;
+    return {
+      source: {
+        mode: "folder",
+        fileHandle: c.fileHandle,
+        dirHandle,
+        displayName: display,
+        codec: decoded.codec,
+        originalBytes: decoded.originalBytes,
+      },
+      save: decoded.json,
+      meta: { path: display, size: c.file.size, lastModified: c.file.lastModified },
+    };
   };
+
+  const choices = valid.map(asChoice);
+  choices.sort((a, b) => (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) || (b.meta?.size ?? 0) - (a.meta?.size ?? 0));
+  if (choices.length === 1) return choices[0];
+  return { choices };
 }
 
 async function ensureWritePermission(fileHandle) {
@@ -265,21 +326,27 @@ export async function openSaveFolderViaInputFallback() {
     .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
     .slice(0, 60);
 
-  // Build candidate objects compatible with decodeFirstDecodable
-  const asCandidates = candidates.map((file) => ({ file, name: file.name, fileHandle: null, depth: 0 }));
-  const picked = await decodeFirstDecodable(asCandidates);
-  if (!picked.ok) throw picked.error;
-  const { candidate: c, decoded } = picked;
+  const asCandidates = candidates.map((file) => ({ file, name: file.name, path: file.webkitRelativePath || file.name, fileHandle: null, depth: 0 }));
+  const { valid, lastErr } = await decodeValidChoices(asCandidates, { max: 60 });
+  if (!valid.length) throw lastErr ?? new Error("No decodable save payload found.");
 
-  return {
-    source: {
-      mode: "folder-fallback",
-      fileHandle: null,
-      dirHandle: null,
-      displayName: c.file.name,
-      codec: decoded.codec,
-      originalBytes: decoded.originalBytes,
-    },
-    save: decoded.json,
-  };
+  const choices = valid.map(({ candidate: c, decoded }) => {
+    const display = c.path || c.file.name;
+    return {
+      source: {
+        mode: "folder-fallback",
+        fileHandle: null,
+        dirHandle: null,
+        displayName: display,
+        codec: decoded.codec,
+        originalBytes: decoded.originalBytes,
+      },
+      save: decoded.json,
+      meta: { path: display, size: c.file.size, lastModified: c.file.lastModified },
+    };
+  });
+
+  choices.sort((a, b) => (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) || (b.meta?.size ?? 0) - (a.meta?.size ?? 0));
+  if (choices.length === 1) return choices[0];
+  return { choices };
 }
