@@ -39,8 +39,8 @@
     <path d="M113 116h26" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.28"/>
     <path d="M113 128h18" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.22"/>
 
-    <text x="196" y="120" fill="#f3f4ff" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="34" font-weight="800">
-      Trading Card Shop Simulator
+    <text x="196" y="120" fill="#f3f4ff" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="32" font-weight="800">
+      Trading Card Shop Simulator <tspan font-size="18" font-weight="700" fill-opacity="0.85">(Game Preview)</tspan>
     </text>
     <text x="196" y="156" fill="#f3f4ff" fill-opacity="0.78" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="18" font-weight="600">
       Save Editor (card-themed • readable • safe-by-default)
