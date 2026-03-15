@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Trading Card Shop Simulator - Save Editor</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__brand">
+        <div class="brandmark" aria-hidden="true"></div>
+        <div>
+          <div class="brand__title">Trading Card Shop Simulator</div>
+          <div class="brand__subtitle">Save Editor</div>
+        </div>
+      </div>
+      <nav class="topbar__nav">
+        <a class="navlink" href="https://saveeditors.github.io/" target="_blank" rel="noreferrer">All Editors Home</a>
+        <a class="navlink" id="repoLink" href="https://github.com/SaveEditors/trading-card-simulator-save-editor" target="_blank" rel="noreferrer">Repo</a>
+        <a class="navlink" id="issuesLink" href="https://github.com/SaveEditors/trading-card-simulator-save-editor/issues" target="_blank" rel="noreferrer">Issues</a>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <div class="sidebar__card">
+          <div class="sidebar__title">Load Save</div>
+          <div class="sidebar__desc">
+            Reads your save file and presents editable fields (no manual JSON editing required).
+          </div>
+
+          <div class="actions">
+            <button class="btn btn--primary" id="btnOpenFile">Open Save File</button>
+            <button class="btn" id="btnOpenFolder">Open Save Folder (Auto-Find)</button>
+          </div>
+
+          <div class="help">
+            <div class="help__row">
+              <div class="help__label">Steam (common Unity path)</div>
+              <div class="help__value mono">%USERPROFILE%\AppData\LocalLow\OPNeonGames\Card Shop Simulator\</div>
+              <div class="help__hint">Pick a file (or pick the folder and let the editor auto-find).</div>
+            </div>
+
+            <div class="help__row">
+              <div class="help__label">Game Pass / Microsoft Store (UWP / Xbox)</div>
+              <div class="help__value mono">
+                %LOCALAPPDATA%\Packages\OPNEONGAMES.TCGCardShopSimulator_19j6by82ahhzr\SystemAppData\wgs\
+              </div>
+              <div class="help__hint">
+                Pick the <span class="chip">wgs</span> folder (or its long child folder). The editor will locate the largest save payload, decode it if needed, and back it up.
+              </div>
+            </div>
+
+            <div class="help__row">
+              <div class="help__label">Cloud save notes</div>
+              <div class="help__hint">
+                Cloud sync can leave multiple copies (active file, conflict/duplicate, or a backup copy). Close the game and pause sync before editing.
+              </div>
+            </div>
+          </div>
+
+          <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop a save file here">
+            <div class="dropzone__title">Drag & Drop</div>
+            <div class="dropzone__desc">Drop a save file here to load (JSON, and common compressed variants).</div>
+          </div>
+
+          <div class="status" id="statusBox" hidden></div>
+        </div>
+
+        <div class="sidebar__card" id="saveSummary" hidden>
+          <div class="sidebar__title">Save Summary</div>
+          <div class="kv">
+            <div class="kv__k">Player</div>
+            <div class="kv__v" id="sumPlayer">—</div>
+            <div class="kv__k">Coins</div>
+            <div class="kv__v" id="sumCoins">—</div>
+            <div class="kv__k">Day</div>
+            <div class="kv__v" id="sumDay">—</div>
+            <div class="kv__k">Shop Level</div>
+            <div class="kv__v" id="sumShopLevel">—</div>
+          </div>
+
+          <div class="actions actions--row">
+            <button class="btn btn--accent" id="btnSaveDownload" disabled>Save (Download)</button>
+            <button class="btn" id="btnSaveWriteBack" disabled title="Available when opened via a picker with write permission.">
+              Save (Write Back)
+            </button>
+          </div>
+
+          <div class="toggles">
+            <label class="toggle">
+              <input type="checkbox" id="chkBackupOnLoad" checked />
+              <span>Backup on Load</span>
+              <span
+                class="tiny muted"
+                title="Recommended. In folder/file-handle modes the backup is written beside the source. In drag/drop mode a backup download is created."
+              >
+                ?
+              </span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="chkBackupOnSave" checked />
+              <span>Backup on Save</span>
+              <span class="tiny muted" title="Recommended. Required when risky fields are edited.">?</span>
+            </label>
+          </div>
+
+          <div class="divider"></div>
+
+          <label class="toggle danger">
+            <input type="checkbox" id="chkUnlockAdvanced" />
+            <span>Unlock Advanced Edits</span>
+          </label>
+          <div class="tiny muted" id="advancedWarning" hidden>
+            Advanced edits can corrupt saves if you change internal IDs/indices or object state. Keep backups enabled.
+          </div>
+        </div>
+      </aside>
+
+      <section class="content">
+        <div class="tabs" role="tablist" aria-label="Editor sections">
+          <button class="tab is-active" data-tab="player" role="tab" aria-selected="true">Player Card</button>
+          <button class="tab" data-tab="items" role="tab" aria-selected="false">Items</button>
+          <button class="tab" data-tab="cards" role="tab" aria-selected="false">Card Binder</button>
+          <button class="tab" data-tab="workers" role="tab" aria-selected="false">Workers</button>
+          <button class="tab" data-tab="flags" role="tab" aria-selected="false">Flags</button>
+          <button class="tab" data-tab="raw" role="tab" aria-selected="false">All Fields</button>
+        </div>
+
+        <div class="panel" id="panelEmpty">
+          <div class="hero">
+            <div class="hero__card">
+              <div class="hero__title">Open a save to begin</div>
+              <div class="hero__desc">
+                A trading-card themed editor for your shop: editable currency, levels, item totals/prices, and card binder progression.
+              </div>
+              <ul class="hero__list">
+                <li>Wallet coins, shop level/XP, day + fame</li>
+                <li>Item inventory totals + set prices (cross-linked across the save)</li>
+                <li>Card binder per expansion: owned, collected flags, set price</li>
+              </ul>
+              <div class="tiny muted">
+                Tip: for Game Pass, use <span class="chip">Open Save Folder</span> and pick the <span class="chip">wgs</span> folder.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="panelPlayer" hidden></div>
+        <div class="panel" id="panelItems" hidden></div>
+        <div class="panel" id="panelCards" hidden></div>
+        <div class="panel" id="panelWorkers" hidden></div>
+        <div class="panel" id="panelFlags" hidden></div>
+        <div class="panel" id="panelRaw" hidden></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div>
+        All editors home: <a href="https://saveeditors.github.io/" target="_blank" rel="noreferrer">saveeditors.github.io</a>
+      </div>
+      <div class="footer__links">
+        <a href="https://github.com/SaveEditors/trading-card-simulator-save-editor" target="_blank" rel="noreferrer">Repo</a>
+        <a href="https://github.com/SaveEditors/trading-card-simulator-save-editor/issues" target="_blank" rel="noreferrer">Issues</a>
+        <a href="https://github.com/SaveEditors" target="_blank" rel="noreferrer">SaveEditors Org</a>
+      </div>
+    </footer>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>
