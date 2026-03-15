@@ -1,8 +1,8 @@
-# Trading Card Shop Simulator - Save Editor
+# Trading Card Shop Simulator (Game Preview) - Save Editor
 
-![Trading Card Shop Simulator - Save Editor Header](assets/readme-header.svg)
+![Trading Card Shop Simulator (Game Preview) - Save Editor Header](assets/readme-header.svg)
 
-A save editor for `Trading Card Shop Simulator` that runs locally in your browser (GitHub Pages) and helps you edit key values without hand-editing JSON.
+A save editor for `Trading Card Shop Simulator (Game Preview)` that runs locally in your browser (GitHub Pages) and helps you edit key values without hand-editing JSON.
 
 Use editor without downloading [HERE](https://saveeditors.github.io/trading-card-simulator-save-editor/)
 
