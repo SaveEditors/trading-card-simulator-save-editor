@@ -203,6 +203,20 @@ async function doOpenFile() {
 async function doOpenFolder() {
   setStatus(null, "");
   try {
+    if (!window.isSecureContext) {
+      setStatus(
+        "bad",
+        "Open Save Folder requires a secure context.\nUse the live editor page (https) or run a local server (http://127.0.0.1/).\nIt will not work from file://."
+      );
+      return;
+    }
+    if (typeof window.showDirectoryPicker !== "function") {
+      setStatus(
+        "bad",
+        "Open Save Folder is not supported in this browser.\nUse Open Save File as a fallback (or switch to Chrome/Edge desktop)."
+      );
+      return;
+    }
     const r = await openSaveFolderAutoFind();
     await loadSaveResult(r);
   } catch (e) {
@@ -335,10 +349,7 @@ function init() {
   $("btnSaveWriteBack").addEventListener("click", doSaveWriteBack);
 
   const folderBtn = $("btnOpenFolder");
-  if (typeof window.showDirectoryPicker !== "function") {
-    folderBtn.disabled = true;
-    folderBtn.title = "Folder loading requires Chrome/Edge (File System Access API). Use Open Save File instead.";
-  }
+  folderBtn.title = "Chrome/Edge desktop recommended. On unsupported browsers, use Open Save File.";
 
   setPanelsVisible("empty");
   refreshSaveButtons();

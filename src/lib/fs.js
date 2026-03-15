@@ -1,8 +1,12 @@
 import { decodeToJson, encodeFromJson } from "./codec.js";
 import { nowStamp } from "./dom.js";
 
-function supportsFsAccess() {
-  return typeof window.showOpenFilePicker === "function" && typeof window.showDirectoryPicker === "function";
+function supportsFilePicker() {
+  return typeof window.showOpenFilePicker === "function";
+}
+
+function supportsDirectoryPicker() {
+  return typeof window.showDirectoryPicker === "function";
 }
 
 async function readFileHandle(handle) {
@@ -26,7 +30,7 @@ async function* walkDir(dirHandle, { maxDepth = 7, depth = 0 } = {}) {
 }
 
 export async function openSaveFileAny() {
-  if (supportsFsAccess()) {
+  if (supportsFilePicker()) {
     const [handle] = await window.showOpenFilePicker({ multiple: false, excludeAcceptAllOption: false });
     if (!handle) return null;
     const { file, bytes } = await readFileHandle(handle);
@@ -68,7 +72,7 @@ export async function openSaveFileAny() {
 }
 
 export async function openSaveFolderAutoFind() {
-  if (!supportsFsAccess()) throw new Error("Folder picking is not supported in this browser. Use Open Save File instead.");
+  if (!supportsDirectoryPicker()) throw new Error("Folder picking is not supported in this browser. Use Open Save File instead.");
 
   const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
   if (!dirHandle) return null;
