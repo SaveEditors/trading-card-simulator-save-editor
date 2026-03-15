@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>Trading Card Shop Simulator - Save Editor</title>
+    <title>Trading Card Shop Simulator (Game Preview) - Save Editor</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="topbar__brand">
         <div>
-          <div class="brand__title">Trading Card Shop Simulator</div>
+          <div class="brand__title">Trading Card Shop Simulator (Game Preview)</div>
           <div class="brand__subtitle">Save Editor</div>
         </div>
       </div>
@@ -24,7 +24,7 @@
     </header>
 
     <main class="layout">
-      <aside class="sidebar">
+      <aside class="sidebar sidebar--left">
         <div class="sidebar__card">
           <div class="sidebar__title">Load Save</div>
           <div class="sidebar__desc">
@@ -50,6 +50,7 @@
               </div>
               <div class="help__hint">
                 Pick the <span class="chip">wgs</span> folder (or its long child folder). The editor will locate the largest save payload, decode it if needed, and back it up.
+                If Windows refuses selecting that folder due to “system files”, use <span class="chip">Open Save File</span> and pick the payload file inside the folder instead.
               </div>
             </div>
 
@@ -68,7 +69,57 @@
 
           <div class="status" id="statusBox" hidden></div>
         </div>
+      </aside>
 
+      <section class="content">
+        <div id="quickTop" class="quicktop" hidden></div>
+
+        <div class="tabs" role="tablist" aria-label="Editor sections">
+          <button class="tab is-active" data-tab="player" role="tab" aria-selected="true">Player Card</button>
+          <button class="tab" data-tab="items" role="tab" aria-selected="false">Items</button>
+          <button class="tab" data-tab="cards" role="tab" aria-selected="false">Card Binder</button>
+          <button class="tab" data-tab="workers" role="tab" aria-selected="false">Workers</button>
+          <button class="tab" data-tab="flags" role="tab" aria-selected="false">Flags</button>
+          <button class="tab" data-tab="raw" role="tab" aria-selected="false">All Fields</button>
+        </div>
+
+        <div class="panel" id="panelEmpty">
+          <div class="hero">
+            <div class="hero__card">
+              <div class="hero__title">Open a save to begin</div>
+              <div class="hero__desc">
+                A trading-card themed editor for your shop: editable currency, levels, item totals/prices, and card binder progression.
+              </div>
+              <div class="hero__bullets" role="list">
+                <div class="bullet" role="listitem">
+                  <span class="bullet__dot bullet__dot--o" aria-hidden="true"></span>
+                  <div>Wallet coins, shop level/XP, day + fame</div>
+                </div>
+                <div class="bullet" role="listitem">
+                  <span class="bullet__dot bullet__dot--b" aria-hidden="true"></span>
+                  <div>Item inventory totals + set prices (cross-linked across the save)</div>
+                </div>
+                <div class="bullet" role="listitem">
+                  <span class="bullet__dot bullet__dot--p" aria-hidden="true"></span>
+                  <div>Card binder per expansion: owned, collected flags, set price</div>
+                </div>
+              </div>
+              <div class="tiny muted">
+                Tip: for Game Pass, use <span class="chip">Open Save Folder</span> and pick the <span class="chip">wgs</span> folder.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="panelPlayer" hidden></div>
+        <div class="panel" id="panelItems" hidden></div>
+        <div class="panel" id="panelCards" hidden></div>
+        <div class="panel" id="panelWorkers" hidden></div>
+        <div class="panel" id="panelFlags" hidden></div>
+        <div class="panel" id="panelRaw" hidden></div>
+      </section>
+
+      <aside class="sidebar sidebar--right">
         <div class="sidebar__card" id="saveSummary" hidden>
           <div class="sidebar__title">Save Summary</div>
           <div class="kv">
@@ -118,54 +169,8 @@
           </div>
         </div>
       </aside>
-
-      <section class="content">
-        <div class="tabs" role="tablist" aria-label="Editor sections">
-          <button class="tab is-active" data-tab="player" role="tab" aria-selected="true">Player Card</button>
-          <button class="tab" data-tab="items" role="tab" aria-selected="false">Items</button>
-          <button class="tab" data-tab="cards" role="tab" aria-selected="false">Card Binder</button>
-          <button class="tab" data-tab="workers" role="tab" aria-selected="false">Workers</button>
-          <button class="tab" data-tab="flags" role="tab" aria-selected="false">Flags</button>
-          <button class="tab" data-tab="raw" role="tab" aria-selected="false">All Fields</button>
-        </div>
-
-        <div class="panel" id="panelEmpty">
-          <div class="hero">
-            <div class="hero__card">
-              <div class="hero__title">Open a save to begin</div>
-              <div class="hero__desc">
-                A trading-card themed editor for your shop: editable currency, levels, item totals/prices, and card binder progression.
-              </div>
-              <div class="hero__bullets" role="list">
-                <div class="bullet" role="listitem">
-                  <span class="bullet__dot bullet__dot--o" aria-hidden="true"></span>
-                  <div>Wallet coins, shop level/XP, day + fame</div>
-                </div>
-                <div class="bullet" role="listitem">
-                  <span class="bullet__dot bullet__dot--b" aria-hidden="true"></span>
-                  <div>Item inventory totals + set prices (cross-linked across the save)</div>
-                </div>
-                <div class="bullet" role="listitem">
-                  <span class="bullet__dot bullet__dot--p" aria-hidden="true"></span>
-                  <div>Card binder per expansion: owned, collected flags, set price</div>
-                </div>
-              </div>
-              <div class="tiny muted">
-                Tip: for Game Pass, use <span class="chip">Open Save Folder</span> and pick the <span class="chip">wgs</span> folder.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel" id="panelPlayer" hidden></div>
-        <div class="panel" id="panelItems" hidden></div>
-        <div class="panel" id="panelCards" hidden></div>
-        <div class="panel" id="panelWorkers" hidden></div>
-        <div class="panel" id="panelFlags" hidden></div>
-        <div class="panel" id="panelRaw" hidden></div>
-      </section>
     </main>
 
-    <script src="main.js"></script>
+    <script type="module" src="src/app.js"></script>
   </body>
 </html>

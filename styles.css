@@ -82,17 +82,36 @@ a{ color: inherit; }
 
 .layout{
   display:grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: 360px minmax(0, 1fr) 360px;
+  grid-template-areas: "left main right";
   gap:18px;
   padding:18px;
-  max-width: 1360px;
+  max-width: 1720px;
   margin: 0 auto;
 }
+@media (max-width: 1280px){
+  .layout{
+    grid-template-columns: 360px minmax(0, 1fr);
+    grid-template-areas:
+      "left main"
+      "right main";
+  }
+}
 @media (max-width: 980px){
-  .layout{ grid-template-columns: 1fr; }
+  .layout{
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "left"
+      "main"
+      "right";
+  }
+  .sidebar--left,.sidebar--right{ position: static; top:auto; max-height:none; overflow:visible; }
 }
 
 .sidebar{ display:flex; flex-direction:column; gap:14px; min-width:0; }
+.sidebar--left{ grid-area:left; position: sticky; top: 86px; align-self:start; max-height: calc(100vh - 104px); overflow:auto; }
+.sidebar--right{ grid-area:right; position: sticky; top: 86px; align-self:start; max-height: calc(100vh - 104px); overflow:auto; }
+.content{ grid-area: main; }
 .sidebar__card{
   background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
   border:1px solid var(--stroke);
@@ -200,6 +219,11 @@ a{ color: inherit; }
   box-shadow: var(--shadow);
   overflow:hidden;
   min-width:0;
+}
+.quicktop{
+  padding:12px;
+  border-bottom:1px solid var(--stroke);
+  background: rgba(10,10,20,.34);
 }
 .tabs{
   display:flex;
@@ -327,5 +351,12 @@ td input{
   border:1px solid rgba(255,255,255,.14);
   background: rgba(0,0,0,.22);
   color: var(--text);
+}
+td input[type="checkbox"]{
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 6px;
+  accent-color: var(--blue);
 }
 td input:disabled{ opacity:.55; cursor:not-allowed; }

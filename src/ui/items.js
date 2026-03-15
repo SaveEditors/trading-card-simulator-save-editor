@@ -6,8 +6,28 @@ function n(v) {
   return Number.isFinite(x) ? x : 0;
 }
 
+function inferItemNames(save, itemCount) {
+  const entries = Object.entries(save ?? {});
+  const candidates = [];
+  for (const [k, v] of entries) {
+    if (!Array.isArray(v)) continue;
+    if (v.length < itemCount) continue;
+    const sample = v.slice(0, Math.min(220, v.length));
+    const nonEmpty = sample.filter((s) => typeof s === "string" && s.trim().length).length;
+    if (nonEmpty < Math.min(15, Math.floor(sample.length * 0.6))) continue;
+    if (!/name/i.test(k)) continue;
+    const score =
+      (/(item|product)/i.test(k) ? 5 : 0) +
+      (/item.*name|name.*item|product.*name/i.test(k) ? 5 : 0) +
+      Math.min(5, Math.floor(nonEmpty / 25));
+    candidates.push({ k, v, score });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.v ?? null;
+}
+
 function makeFilterRow({ onChange }) {
-  const q = el("input", { type: "text", placeholder: "Filter by item id (e.g. 12)…" });
+  const q = el("input", { type: "text", placeholder: "Filter by item id (e.g. 12) or name…" });
   const sel = el(
     "select",
     {},
@@ -122,10 +142,17 @@ export function renderItemsPanel({ save, getAdvancedUnlocked, onSafeEdit, onRisk
   root.appendChild(tableCard);
 
   const rows = buildItemRows(save);
+  const nameList = inferItemNames(save, rows.length);
+
+  // Add an optional Name column when a name list exists in the save.
+  if (nameList) {
+    thead.firstChild.insertBefore(el("th", {}, "Name"), thead.firstChild.children[1] ?? null);
+  }
 
   function renderRows({ q, mode, limit }) {
     while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
     const qn = q && /^\d+$/.test(q) ? Number(q) : null;
+    const ql = q ? q.toLowerCase() : "";
     const out = [];
     for (const r of rows) {
       const licensed = r.licensed == null ? null : !!r.licensed;
@@ -133,6 +160,10 @@ export function renderItemsPanel({ save, getAdvancedUnlocked, onSafeEdit, onRisk
       if (mode === "nonzero" && !nonzero) continue;
       if (mode === "licensed" && licensed !== true) continue;
       if (qn != null && r.id !== qn) continue;
+      if (qn == null && ql && nameList) {
+        const nm = String(nameList[r.id] ?? "").toLowerCase();
+        if (!nm.includes(ql)) continue;
+      }
       out.push(r);
       if (out.length >= limit) break;
     }
@@ -174,6 +205,7 @@ export function renderItemsPanel({ save, getAdvancedUnlocked, onSafeEdit, onRisk
           "tr",
           {},
           el("td", { class: "mono" }, String(r.id)),
+          ...(nameList ? [el("td", {}, String(nameList[r.id] ?? "—"))] : []),
           el("td", {}, licensedCell),
           el("td", {}, totalInput),
           el("td", {}, priceInput),
@@ -220,9 +252,19 @@ export function renderItemsPanel({ save, getAdvancedUnlocked, onSafeEdit, onRisk
 
         const wrap = el("div", { class: "tablewrap", style: { marginTop: "12px" } });
         const t = el("table", {});
-        t.appendChild(el("thead", {}, el("tr", {}, el("th", {}, "Item ID"), el("th", {}, "Placed Amount (sum)"))));
+        t.appendChild(
+          el(
+            "thead",
+            {},
+            el("tr", {}, el("th", {}, "Item ID"), ...(nameList ? [el("th", {}, "Name")] : []), el("th", {}, "Placed Amount (sum)"))
+          )
+        );
         const tb = el("tbody", {});
-        for (const [id, amt] of rows) tb.appendChild(el("tr", {}, el("td", { class: "mono" }, String(id)), el("td", {}, fmtNumber(amt))));
+        for (const [id, amt] of rows) {
+          tb.appendChild(
+            el("tr", {}, el("td", { class: "mono" }, String(id)), ...(nameList ? [el("td", {}, String(nameList[id] ?? "—"))] : []), el("td", {}, fmtNumber(amt)))
+          );
+        }
         t.appendChild(tb);
         wrap.appendChild(t);
         return wrap;

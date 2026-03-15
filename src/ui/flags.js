@@ -7,6 +7,31 @@ function renderBoolArray({ title, desc, arr, advanced, onEdit }) {
     return card;
   }
 
+  const bulkRow = el("div", { class: "row", style: { marginTop: "10px" } });
+  bulkRow.appendChild(el("div", { class: "pillwarn" }, `Length ${arr.length}`));
+  const mkBulkBtn = (label, title, fn, cls = "btn") =>
+    el(
+      "button",
+      {
+        class: cls,
+        disabled: !advanced,
+        title: advanced ? title : "Unlock Advanced Edits to change flags.",
+        onclick: () => {
+          fn?.();
+          onEdit?.();
+        },
+      },
+      label
+    );
+  bulkRow.appendChild(mkBulkBtn("Bulk: Unlock All", "Sets every entry to true.", () => arr.fill(true), "btn btn--accent"));
+  bulkRow.appendChild(mkBulkBtn("Bulk: Lock All", "Sets every entry to false.", () => arr.fill(false)));
+  bulkRow.appendChild(
+    mkBulkBtn("Bulk: Invert", "Flips every entry (true↔false).", () => {
+      for (let i = 0; i < arr.length; i++) arr[i] = !arr[i];
+    })
+  );
+  card.appendChild(bulkRow);
+
   const row = el("div", { class: "row", style: { marginTop: "10px" } });
   const q = el("input", { type: "text", placeholder: "Filter id (e.g. 12) or leave blank" });
   const mode = el("select", {}, el("option", { value: "true" }, "True only"), el("option", { value: "all" }, "All"));
@@ -66,34 +91,62 @@ export function renderFlagsPanel({ save, getAdvancedUnlocked, onSafeEdit, onRisk
     )
   );
 
-  root.appendChild(
-    renderBoolArray({
-      title: "Item Licenses",
-      desc: "m_IsItemLicenseUnlocked (often 0–500).",
-      arr: save.m_IsItemLicenseUnlocked,
-      advanced,
-      onEdit: () => onRiskyEdit?.(),
-    })
-  );
-  root.appendChild(
-    renderBoolArray({
-      title: "Workers Hired",
-      desc: "m_IsWorkerHired (often 0–99).",
-      arr: save.m_IsWorkerHired,
-      advanced,
-      onEdit: () => onRiskyEdit?.(),
-    })
-  );
-  root.appendChild(
-    renderBoolArray({
-      title: "Achievements",
-      desc: "m_IsAchievementUnlocked (often 0–99).",
-      arr: save.m_IsAchievementUnlocked,
-      advanced,
-      onEdit: () => onRiskyEdit?.(),
-    })
-  );
+  const known = [
+    { key: "m_IsItemLicenseUnlocked", title: "Item Licenses", desc: "m_IsItemLicenseUnlocked (often 0–500)." },
+    { key: "m_IsWorkerHired", title: "Workers Hired", desc: "m_IsWorkerHired (often 0–99)." },
+    { key: "m_IsAchievementUnlocked", title: "Achievements", desc: "m_IsAchievementUnlocked (often 0–99)." },
+  ];
+
+  for (const k of known) {
+    root.appendChild(
+      renderBoolArray({
+        title: k.title,
+        desc: k.desc,
+        arr: save?.[k.key],
+        advanced,
+        onEdit: () => onRiskyEdit?.(),
+      })
+    );
+  }
+
+  const isBoolArray = (v) => Array.isArray(v) && v.length && v.slice(0, 240).every((x) => typeof x === "boolean");
+  const knownKeys = new Set(known.map((k) => k.key));
+  const otherKeys = Object.keys(save ?? {})
+    .filter((k) => !knownKeys.has(k))
+    .filter((k) => /unlock|unlocked|license|achievement|hire|hired/i.test(k))
+    .filter((k) => isBoolArray(save[k]))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, 40);
+
+  if (otherKeys.length) {
+    const card = el(
+      "div",
+      { class: "card" },
+      el("div", { class: "card__title" }, "Other Unlock Lists"),
+      el("div", { class: "card__desc" }, "Auto-detected boolean lists on the save root (unlock, unlocked, hire, achievement, license).")
+    );
+    const sel = el("select", {}, ...otherKeys.map((k) => el("option", { value: k }, `${k} (${save[k].length})`)));
+    const host = el("div", { style: { marginTop: "12px" } });
+    const renderPicked = () => {
+      while (host.firstChild) host.removeChild(host.firstChild);
+      const key = sel.value;
+      const title = key.replace(/^m_/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
+      host.appendChild(
+        renderBoolArray({
+          title,
+          desc: `${key} (auto-detected).`,
+          arr: save[key],
+          advanced,
+          onEdit: () => onRiskyEdit?.(),
+        })
+      );
+    };
+    sel.addEventListener("change", renderPicked);
+    card.appendChild(el("div", { class: "row", style: { marginTop: "10px" } }, el("span", { class: "muted tiny" }, "Pick list"), sel));
+    card.appendChild(host);
+    renderPicked();
+    root.appendChild(card);
+  }
 
   return root;
 }
-

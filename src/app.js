@@ -1,4 +1,4 @@
-import { clear, fmtNumber, nowStamp } from "./lib/dom.js";
+import { clear, el, fmtNumber, nowStamp } from "./lib/dom.js";
 import { openSaveFileAny, openSaveFolderFromDirectoryHandle, openSaveFolderViaInputFallback, writeBack, downloadBytes, backupBesideIfPossible } from "./lib/fs.js";
 import { encodeFromJson } from "./lib/codec.js";
 import { detectTcgShopSave, normalizeForWrite, summarizeSave } from "./lib/save.js";
@@ -35,6 +35,10 @@ function setStatus(kind, text) {
   }
 }
 
+async function nextFrame() {
+  await new Promise((r) => requestAnimationFrame(() => r()));
+}
+
 function setPanelsVisible(panelKey) {
   const map = {
     empty: $("panelEmpty"),
@@ -62,6 +66,150 @@ function refreshSummary() {
   $("sumShopLevel").textContent = sum.shopLevel != null ? String(sum.shopLevel) : "—";
 }
 
+function renderQuickTop() {
+  const host = $("quickTop");
+  if (!host) return;
+  if (!state.save) {
+    host.hidden = true;
+    clear(host);
+    return;
+  }
+
+  host.hidden = false;
+  clear(host);
+
+  const save = state.save;
+  const advanced = !!state.advancedUnlocked;
+
+  const numberInput = ({ label, value, step = "1", min = 0, onChange }) => {
+    const input = el("input", { type: "number", value: String(value ?? 0), step: String(step), min: String(min) });
+    input.addEventListener("change", () => {
+      const n = Number(input.value);
+      onChange?.(Number.isFinite(n) ? n : value);
+      refreshSummary();
+      setStatus("ok", "Edits staged. Save when ready.");
+    });
+    return el("div", { class: "field" }, el("label", {}, label), input);
+  };
+
+  const textInput = ({ label, value, onChange }) => {
+    const input = el("input", { type: "text", value: String(value ?? "") });
+    input.addEventListener("change", () => {
+      onChange?.(input.value);
+      refreshSummary();
+      setStatus("ok", "Edits staged. Save when ready.");
+    });
+    return el("div", { class: "field" }, el("label", {}, label), input);
+  };
+
+  const bulkBtn = ({ label, title, disabled, cls = "btn", onClick }) =>
+    el(
+      "button",
+      {
+        class: cls,
+        disabled,
+        title,
+        onclick: () => {
+          onClick?.();
+          refreshSummary();
+          markRiskyEdit();
+          setStatus("warn", "Unlocks staged. Keep backups enabled, then save.");
+        },
+      },
+      label
+    );
+
+  const hasAchievements = Array.isArray(save.m_IsAchievementUnlocked);
+  const hasLicenses = Array.isArray(save.m_IsItemLicenseUnlocked);
+  const hasWorkers = Array.isArray(save.m_IsWorkerHired);
+
+  host.appendChild(
+    el(
+      "div",
+      { class: "card" },
+      el("div", { class: "card__title" }, "Quick Edits"),
+      el("div", { class: "card__desc" }, "Most-used values and one-click unlocks (requires Advanced Edits)."),
+      el(
+        "div",
+        { class: "grid", style: { marginTop: "10px" } },
+        textInput({
+          label: "Player Name",
+          value: save.m_PlayerName,
+          onChange: (v) => {
+            save.m_PlayerName = String(v ?? "");
+          },
+        }),
+        numberInput({
+          label: "Coins (Wallet)",
+          value: save.m_CoinAmountDouble,
+          step: "0.01",
+          min: 0,
+          onChange: (n) => {
+            const v = Math.max(0, n);
+            save.m_CoinAmountDouble = v;
+            if ("m_CoinAmount" in save) save.m_CoinAmount = v;
+          },
+        }),
+        numberInput({
+          label: "Fame Points",
+          value: save.m_FamePoint,
+          min: 0,
+          onChange: (n) => {
+            save.m_FamePoint = Math.max(0, Math.trunc(n));
+          },
+        }),
+        numberInput({
+          label: "Shop Level",
+          value: save.m_ShopLevel,
+          min: 0,
+          onChange: (n) => {
+            save.m_ShopLevel = Math.max(0, Math.trunc(n));
+          },
+        }),
+        numberInput({
+          label: "Shop XP",
+          value: save.m_ShopExpPoint,
+          min: 0,
+          onChange: (n) => {
+            save.m_ShopExpPoint = Math.max(0, Math.trunc(n));
+          },
+        }),
+        numberInput({
+          label: "Current Day",
+          value: save.m_CurrentDay,
+          min: 0,
+          onChange: (n) => {
+            save.m_CurrentDay = Math.max(0, Math.trunc(n));
+          },
+        })
+      ),
+      el(
+        "div",
+        { class: "row", style: { marginTop: "10px" } },
+        bulkBtn({
+          label: "Unlock All Achievements",
+          cls: "btn btn--accent",
+          disabled: !advanced || !hasAchievements,
+          title: !hasAchievements ? "Not present in this save." : advanced ? "Sets all achievement flags to true." : "Unlock Advanced Edits to use one-click unlocks.",
+          onClick: () => save.m_IsAchievementUnlocked.fill(true),
+        }),
+        bulkBtn({
+          label: "Unlock All Item Licenses",
+          disabled: !advanced || !hasLicenses,
+          title: !hasLicenses ? "Not present in this save." : advanced ? "Sets all item license flags to true." : "Unlock Advanced Edits to use one-click unlocks.",
+          onClick: () => save.m_IsItemLicenseUnlocked.fill(true),
+        }),
+        bulkBtn({
+          label: "Hire All Workers",
+          disabled: !advanced || !hasWorkers,
+          title: !hasWorkers ? "Not present in this save." : advanced ? "Sets all worker-hired flags to true." : "Unlock Advanced Edits to use one-click unlocks.",
+          onClick: () => save.m_IsWorkerHired.fill(true),
+        })
+      )
+    )
+  );
+}
+
 function refreshSaveButtons() {
   const has = !!state.save;
   $("btnSaveDownload").disabled = !has;
@@ -76,6 +224,8 @@ function markRiskyEdit() {
 
 function renderAllPanels() {
   if (!state.save) return;
+
+  renderQuickTop();
 
   clear($("panelPlayer"));
   $("panelPlayer").appendChild(
@@ -174,7 +324,7 @@ async function loadSaveResult(result) {
 
   const detect = detectTcgShopSave(result.save);
   if (!detect.ok) {
-    setStatus("bad", `This file does not look like a Trading Card Shop Simulator save.\nMissing keys: ${detect.missing.slice(0, 12).join(", ")}${detect.missing.length > 12 ? ", …" : ""}`);
+    setStatus("bad", `This file does not look like a Trading Card Shop Simulator (Game Preview) save.\nMissing keys: ${detect.missing.slice(0, 12).join(", ")}${detect.missing.length > 12 ? ", …" : ""}`);
     return;
   }
 
@@ -185,7 +335,11 @@ async function loadSaveResult(result) {
   const bak = await backupOnLoadIfEnabled(state.source);
   const codec = state.source.codec?.kind ?? "json";
   const bakLine = bak ? `Backup on load: ${bak.kind} (${bak.name})` : `Backup on load: ${$("chkBackupOnLoad").checked ? "ON" : "OFF"}`;
-  setStatus("ok", `Loaded save: ${state.source.displayName}\nCodec: ${codec}\n${bakLine}`);
+  const modeNote =
+    state.source.mode === "folder-fallback"
+      ? "\nNote: Loaded via browser folder fallback (read-only). Write-back is disabled; use Save (Download) then copy into place."
+      : "";
+  setStatus("ok", `Loaded save: ${state.source.displayName}\nCodec: ${codec}\n${bakLine}${modeNote}`);
   renderAllPanels();
   setPanelsVisible("player");
 }
@@ -211,12 +365,20 @@ async function doOpenFile() {
 async function doOpenFolder() {
   try {
     setStatus("warn", "Opening folder picker...");
+    await nextFrame();
 
     let r = null;
     if (window.isSecureContext && typeof window.showDirectoryPicker === "function") {
       let dirHandle = null;
       try {
-        dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        // Some Windows shell pickers refuse certain "system" folders in read-write mode.
+        // Try read-write first, then fall back to read-only.
+        try {
+          dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        } catch (e) {
+          if (e?.name === "AbortError") throw e;
+          dirHandle = await window.showDirectoryPicker({ mode: "read" });
+        }
       } catch (e) {
         if (e?.name === "AbortError") {
           setStatus("warn", "Folder selection canceled.");
@@ -227,12 +389,16 @@ async function doOpenFolder() {
       }
 
       if (dirHandle) {
+        setStatus("warn", "Scanning folder for save payload...");
+        await nextFrame();
         r = await openSaveFolderFromDirectoryHandle(dirHandle);
       }
     }
 
     if (!r) {
       // Works in Chrome/Edge even when directory picker is blocked by policy; read-only, download-based saves.
+      setStatus("warn", "Opening fallback folder picker...");
+      await nextFrame();
       r = await openSaveFolderViaInputFallback();
     }
 
@@ -243,7 +409,11 @@ async function doOpenFolder() {
 
     await loadSaveResult(r);
   } catch (e) {
-    setStatus("bad", `Open folder failed: ${e?.message ?? String(e)}`);
+    const msg = e?.message ?? String(e);
+    setStatus(
+      "bad",
+      `Open folder failed: ${msg}\nTip: If Windows refuses selecting a save folder due to “system files”, use Open Save File and select the payload file inside the folder.`
+    );
   }
 }
 

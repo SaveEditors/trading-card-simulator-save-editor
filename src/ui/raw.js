@@ -49,18 +49,81 @@ function primitiveEditor({ value, disabled, onChange }) {
   return input;
 }
 
+function inferArrayKind(arr) {
+  const max = Math.min(220, arr.length);
+  let bool = 0;
+  let num = 0;
+  let str = 0;
+  let other = 0;
+  for (let i = 0; i < max; i++) {
+    const v = arr[i];
+    if (typeof v === "boolean") bool++;
+    else if (typeof v === "number") num++;
+    else if (typeof v === "string") str++;
+    else if (v == null) other++;
+    else other++;
+  }
+  if (bool > 0 && num === 0 && str === 0 && other <= Math.max(1, Math.floor(max * 0.05))) return "boolean";
+  return "mixed";
+}
+
 function renderArrayEditor({ root, path, arr, advancedUnlocked, onRiskyEdit }) {
   const card = el("div", { class: "card" }, el("div", { class: "card__title" }, `Array Editor`), el("div", { class: "card__desc" }, pathToString(path)));
 
   const len = arr.length;
   const start = el("input", { type: "number", value: "0", min: "0", step: "1", style: { width: "110px" } });
   const count = el("select", {}, el("option", { value: "25" }, "25"), el("option", { value: "50", selected: true }, "50"), el("option", { value: "100" }, "100"));
-  const row = el("div", { class: "row", style: { marginTop: "10px" } }, el("div", { class: "pillwarn" }, `Length ${len}`), el("span", { class: "muted tiny" }, "Start"), start, el("span", { class: "muted tiny" }, "Count"), count);
+  const row = el(
+    "div",
+    { class: "row", style: { marginTop: "10px" } },
+    el("div", { class: "pillwarn" }, `Length ${len}`),
+    el("span", { class: "muted tiny" }, "Start"),
+    start,
+    el("span", { class: "muted tiny" }, "Count"),
+    count
+  );
   card.appendChild(row);
 
   const risky = isRiskyPath(path);
   const disabled = risky && !advancedUnlocked;
   if (disabled) card.appendChild(el("div", { class: "pillbad", style: { marginTop: "10px" } }, "Locked: risky path. Unlock Advanced Edits to modify."));
+
+  const kind = inferArrayKind(arr);
+  if (kind === "boolean") {
+    const bulkRow = el("div", { class: "row", style: { marginTop: "10px" } });
+    const scope = el("select", {}, el("option", { value: "visible" }, "Visible range"), el("option", { value: "all" }, "Entire array"));
+    const mk = (label, title, fn, cls = "btn") =>
+      el(
+        "button",
+        {
+          class: cls,
+          disabled,
+          title: disabled ? "Unlock Advanced Edits to modify this path." : title,
+          onclick: () => {
+            const s = Math.max(0, Math.trunc(Number(start.value) || 0));
+            const c = Math.max(1, Number(count.value) || 50);
+            const end = Math.min(len, s + c);
+            const from = scope.value === "all" ? 0 : s;
+            const to = scope.value === "all" ? len : end;
+            fn(from, to);
+            onRiskyEdit?.();
+            render();
+          },
+        },
+        label
+      );
+
+    bulkRow.appendChild(el("span", { class: "muted tiny" }, "Bulk"));
+    bulkRow.appendChild(scope);
+    bulkRow.appendChild(mk("Unlock All", "Sets entries to true.", (from, to) => arr.fill(true, from, to), "btn btn--accent"));
+    bulkRow.appendChild(mk("Lock All", "Sets entries to false.", (from, to) => arr.fill(false, from, to)));
+    bulkRow.appendChild(
+      mk("Invert", "Flips entries (true↔false).", (from, to) => {
+        for (let i = from; i < to; i++) arr[i] = !arr[i];
+      })
+    );
+    card.appendChild(bulkRow);
+  }
 
   const wrap = el("div", { class: "tablewrap", style: { marginTop: "12px" } });
   const table = el("table", {});

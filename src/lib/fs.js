@@ -9,6 +9,23 @@ function supportsDirectoryPicker() {
   return typeof window.showDirectoryPicker === "function";
 }
 
+function shouldSkipName(name) {
+  const n = String(name ?? "").toLowerCase();
+  // Keep this conservative: only skip well-known OS junk that can error or slow scans.
+  return (
+    n === "desktop.ini" ||
+    n === "thumbs.db" ||
+    n === ".ds_store" ||
+    n === ".spotlight-v100" ||
+    n === ".trashes" ||
+    n === "$recycle.bin" ||
+    n === "system volume information" ||
+    n === "pagefile.sys" ||
+    n === "hiberfil.sys" ||
+    n === "swapfile.sys"
+  );
+}
+
 async function readFileHandle(handle) {
   const file = await handle.getFile();
   const ab = await file.arrayBuffer();
@@ -21,11 +38,39 @@ async function readFirstByte(file) {
   return b[0] ?? 0;
 }
 
+async function tryGetFile(fileHandle) {
+  try {
+    return await fileHandle.getFile();
+  } catch {
+    return null;
+  }
+}
+
+async function tryReadFirstByte(file) {
+  try {
+    return await readFirstByte(file);
+  } catch {
+    return null;
+  }
+}
+
 async function* walkDir(dirHandle, { maxDepth = 7, depth = 0 } = {}) {
   if (depth > maxDepth) return;
-  for await (const [name, handle] of dirHandle.entries()) {
-    if (handle.kind === "file") yield { name, fileHandle: handle, depth };
-    else if (handle.kind === "directory") yield* walkDir(handle, { maxDepth, depth: depth + 1 });
+  let it = null;
+  try {
+    it = dirHandle.entries();
+  } catch {
+    return;
+  }
+
+  try {
+    for await (const [name, handle] of it) {
+      if (shouldSkipName(name)) continue;
+      if (handle.kind === "file") yield { name, fileHandle: handle, depth };
+      else if (handle.kind === "directory") yield* walkDir(handle, { maxDepth, depth: depth + 1 });
+    }
+  } catch {
+    // Some folders can contain inaccessible/system entries; best-effort walk.
   }
 }
 
@@ -94,16 +139,36 @@ async function decodeFirstDecodable(candidates) {
 export async function openSaveFolderFromDirectoryHandle(dirHandle) {
   if (!dirHandle) return null;
 
+  // Cap scanning so selecting the wrong folder (e.g. a whole game install) doesn't hang forever.
+  const MAX_FILES_SCANNED = 6500;
+  const MAX_CANDIDATES = 140;
+
   const candidates = [];
+  let scanned = 0;
   for await (const entry of walkDir(dirHandle, { maxDepth: 8 })) {
-    const file = await entry.fileHandle.getFile();
+    scanned++;
+    if (scanned > MAX_FILES_SCANNED) break;
+
+    const file = await tryGetFile(entry.fileHandle);
+    if (!file) continue;
     if (file.size < 256) continue;
-    const first = await readFirstByte(file);
+
+    const first = await tryReadFirstByte(file);
+    if (first == null) continue;
     if (!isLikelyPayloadFirstByte(first)) continue;
+
     candidates.push({ ...entry, file });
+    if (candidates.length > MAX_CANDIDATES) {
+      candidates.sort((a, b) => b.file.size - a.file.size);
+      candidates.length = MAX_CANDIDATES;
+    }
+
+    // Keep the UI responsive on large scans.
+    if (scanned % 500 === 0) await new Promise((r) => setTimeout(r, 0));
   }
-  candidates.sort((a, b) => b.file.size - a.file.size);
+
   if (!candidates.length) return null;
+  candidates.sort((a, b) => b.file.size - a.file.size);
 
   const picked = await decodeFirstDecodable(candidates);
   if (!picked.ok) throw picked.error;
@@ -121,8 +186,24 @@ export async function openSaveFolderFromDirectoryHandle(dirHandle) {
   };
 }
 
+async function ensureWritePermission(fileHandle) {
+  if (!fileHandle) return false;
+  if (typeof fileHandle.queryPermission !== "function" || typeof fileHandle.requestPermission !== "function") return true;
+  try {
+    const opts = { mode: "readwrite" };
+    const q = await fileHandle.queryPermission(opts);
+    if (q === "granted") return true;
+    const r = await fileHandle.requestPermission(opts);
+    return r === "granted";
+  } catch {
+    return false;
+  }
+}
+
 export async function writeBack(source, save) {
   if (!source?.fileHandle) throw new Error("No file handle available for write-back.");
+  const ok = await ensureWritePermission(source.fileHandle);
+  if (!ok) throw new Error("Write permission was not granted for this file. Use Save (Download) and copy it into place.");
   const { bytes } = await encodeFromJson(save, source.codec);
   const writable = await source.fileHandle.createWritable();
   await writable.write(bytes);
