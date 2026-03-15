@@ -11,7 +11,6 @@
   <body>
     <header class="topbar">
       <div class="topbar__brand">
-        <div class="brandmark" aria-hidden="true"></div>
         <div>
           <div class="brand__title">Trading Card Shop Simulator</div>
           <div class="brand__subtitle">Save Editor</div>
@@ -137,11 +136,20 @@
               <div class="hero__desc">
                 A trading-card themed editor for your shop: editable currency, levels, item totals/prices, and card binder progression.
               </div>
-              <ul class="hero__list">
-                <li>Wallet coins, shop level/XP, day + fame</li>
-                <li>Item inventory totals + set prices (cross-linked across the save)</li>
-                <li>Card binder per expansion: owned, collected flags, set price</li>
-              </ul>
+              <div class="hero__bullets" role="list">
+                <div class="bullet" role="listitem">
+                  <span class="bullet__dot bullet__dot--o" aria-hidden="true"></span>
+                  <div>Wallet coins, shop level/XP, day + fame</div>
+                </div>
+                <div class="bullet" role="listitem">
+                  <span class="bullet__dot bullet__dot--b" aria-hidden="true"></span>
+                  <div>Item inventory totals + set prices (cross-linked across the save)</div>
+                </div>
+                <div class="bullet" role="listitem">
+                  <span class="bullet__dot bullet__dot--p" aria-hidden="true"></span>
+                  <div>Card binder per expansion: owned, collected flags, set price</div>
+                </div>
+              </div>
               <div class="tiny muted">
                 Tip: for Game Pass, use <span class="chip">Open Save Folder</span> and pick the <span class="chip">wgs</span> folder.
               </div>
