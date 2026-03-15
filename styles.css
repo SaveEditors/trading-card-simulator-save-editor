@@ -308,14 +308,3 @@ td input{
   color: var(--text);
 }
 td input:disabled{ opacity:.55; cursor:not-allowed; }
-
-.footer{
-  max-width: 1360px;
-  margin: 0 auto;
-  padding: 14px 18px 26px;
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  color: var(--muted);
-}
-.footer__links{ display:flex; gap:12px; flex-wrap:wrap; }
