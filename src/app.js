@@ -1,5 +1,5 @@
 import { clear, fmtNumber, nowStamp } from "./lib/dom.js";
-import { openSaveFileAny, openSaveFolderAutoFind, writeBack, downloadBytes, backupBesideIfPossible } from "./lib/fs.js";
+import { openSaveFileAny, openSaveFolderFromDirectoryHandle, openSaveFolderViaInputFallback, writeBack, downloadBytes, backupBesideIfPossible } from "./lib/fs.js";
 import { encodeFromJson } from "./lib/codec.js";
 import { detectTcgShopSave, normalizeForWrite, summarizeSave } from "./lib/save.js";
 import { renderPlayerPanel } from "./ui/player.js";
@@ -201,23 +201,34 @@ async function doOpenFile() {
 }
 
 async function doOpenFolder() {
-  setStatus(null, "");
   try {
-    if (!window.isSecureContext) {
-      setStatus(
-        "bad",
-        "Open Save Folder requires a secure context.\nUse the live editor page (https) or run a local server (http://127.0.0.1/).\nIt will not work from file://."
-      );
+    setStatus("warn", "Opening folder picker...");
+
+    let r = null;
+    if (window.isSecureContext && typeof window.showDirectoryPicker === "function") {
+      let dirHandle = null;
+      try {
+        dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      } catch (e) {
+        // If permissions/user-activation blocks the picker, fall back to webkitdirectory input.
+        setStatus("warn", `Folder picker blocked (${e?.name ?? "error"}). Trying fallback...`);
+      }
+
+      if (dirHandle) {
+        r = await openSaveFolderFromDirectoryHandle(dirHandle);
+      }
+    }
+
+    if (!r) {
+      // Works in Chrome/Edge even when directory picker is blocked by policy; read-only, download-based saves.
+      r = await openSaveFolderViaInputFallback();
+    }
+
+    if (!r) {
+      setStatus("warn", "Folder selection canceled.");
       return;
     }
-    if (typeof window.showDirectoryPicker !== "function") {
-      setStatus(
-        "bad",
-        "Open Save Folder is not supported in this browser.\nUse Open Save File as a fallback (or switch to Chrome/Edge desktop)."
-      );
-      return;
-    }
-    const r = await openSaveFolderAutoFind();
+
     await loadSaveResult(r);
   } catch (e) {
     setStatus("bad", `Open folder failed: ${e?.message ?? String(e)}`);

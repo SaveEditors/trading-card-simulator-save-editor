@@ -71,47 +71,54 @@ export async function openSaveFileAny() {
   });
 }
 
-export async function openSaveFolderAutoFind() {
-  if (!supportsDirectoryPicker()) throw new Error("Folder picking is not supported in this browser. Use Open Save File instead.");
+function isLikelyPayloadFirstByte(first) {
+  // { [ gzip zlib
+  return first === 0x7b || first === 0x5b || first === 0x1f || first === 0x78;
+}
 
-  const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-  if (!dirHandle) return null;
-
-  // Auto-find: try the biggest likely payloads first until one decodes cleanly.
-  const candidates = [];
-  for await (const entry of walkDir(dirHandle, { maxDepth: 8 })) {
-    const file = await entry.fileHandle.getFile();
-    if (file.size < 256) continue;
-    const first = await readFirstByte(file);
-    if (first !== 0x7b && first !== 0x5b && first !== 0x1f && first !== 0x78) continue; // { [ gzip zlib
-    candidates.push({ ...entry, file });
-  }
-  candidates.sort((a, b) => b.file.size - a.file.size);
-  if (!candidates.length) return null;
-
+async function decodeFirstDecodable(candidates) {
   let lastErr = null;
   for (const c of candidates.slice(0, 25)) {
     try {
       const ab = await c.file.arrayBuffer();
       const bytes = new Uint8Array(ab);
       const decoded = await decodeToJson(bytes);
-      return {
-        source: {
-          mode: "folder",
-          fileHandle: c.fileHandle,
-          dirHandle,
-          displayName: c.file.name,
-          codec: decoded.codec,
-          originalBytes: decoded.originalBytes,
-        },
-        save: decoded.json,
-      };
+      return { ok: true, candidate: c, decoded };
     } catch (e) {
       lastErr = e;
     }
   }
+  return { ok: false, error: lastErr ?? new Error("No decodable save payload found.") };
+}
 
-  throw lastErr ?? new Error("No decodable save payload found in the selected folder.");
+export async function openSaveFolderFromDirectoryHandle(dirHandle) {
+  if (!dirHandle) return null;
+
+  const candidates = [];
+  for await (const entry of walkDir(dirHandle, { maxDepth: 8 })) {
+    const file = await entry.fileHandle.getFile();
+    if (file.size < 256) continue;
+    const first = await readFirstByte(file);
+    if (!isLikelyPayloadFirstByte(first)) continue;
+    candidates.push({ ...entry, file });
+  }
+  candidates.sort((a, b) => b.file.size - a.file.size);
+  if (!candidates.length) return null;
+
+  const picked = await decodeFirstDecodable(candidates);
+  if (!picked.ok) throw picked.error;
+  const { candidate: c, decoded } = picked;
+  return {
+    source: {
+      mode: "folder",
+      fileHandle: c.fileHandle,
+      dirHandle,
+      displayName: c.file.name,
+      codec: decoded.codec,
+      originalBytes: decoded.originalBytes,
+    },
+    save: decoded.json,
+  };
 }
 
 export async function writeBack(source, save) {
@@ -149,4 +156,49 @@ export async function backupBesideIfPossible(source, bytes, { suffix = "bak" } =
 
   downloadBytes(`${name}`, bytes);
   return { kind: "downloaded", name };
+}
+
+async function pickFolderFilesViaInput() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  // Chrome/Edge: folder picker via webkitdirectory
+  input.webkitdirectory = true;
+
+  return await new Promise((resolve) => {
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files ?? []);
+      resolve(files.length ? files : null);
+    });
+    input.click();
+  });
+}
+
+export async function openSaveFolderViaInputFallback() {
+  const files = await pickFolderFilesViaInput();
+  if (!files) return null;
+
+  // Auto-find: biggest likely payloads first until one decodes cleanly.
+  const candidates = files
+    .filter((f) => (f?.size ?? 0) >= 256)
+    .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
+    .slice(0, 60);
+
+  // Build candidate objects compatible with decodeFirstDecodable
+  const asCandidates = candidates.map((file) => ({ file, name: file.name, fileHandle: null, depth: 0 }));
+  const picked = await decodeFirstDecodable(asCandidates);
+  if (!picked.ok) throw picked.error;
+  const { candidate: c, decoded } = picked;
+
+  return {
+    source: {
+      mode: "folder-fallback",
+      fileHandle: null,
+      dirHandle: null,
+      displayName: c.file.name,
+      codec: decoded.codec,
+      originalBytes: decoded.originalBytes,
+    },
+    save: decoded.json,
+  };
 }
