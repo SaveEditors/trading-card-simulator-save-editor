@@ -1,5 +1,6 @@
 import { decodeToJson, encodeFromJson } from "./codec.js";
 import { nowStamp } from "./dom.js";
+import { detectTcgShopSave } from "./save.js";
 
 function supportsFilePicker() {
   return typeof window.showOpenFilePicker === "function";
@@ -22,7 +23,10 @@ function shouldSkipName(name) {
     n === "system volume information" ||
     n === "pagefile.sys" ||
     n === "hiberfil.sys" ||
-    n === "swapfile.sys"
+    n === "swapfile.sys" ||
+    // WGS noise
+    n === "containers.index" ||
+    /^container\.\d+$/i.test(n)
   );
 }
 
@@ -72,6 +76,7 @@ export async function openSaveFileAny() {
       try {
         const { file, bytes } = await readFileHandle(handle);
         const decoded = await decodeToJson(bytes);
+        const detect = detectTcgShopSave(decoded.json);
         choices.push({
           source: {
             mode: "file",
@@ -82,7 +87,7 @@ export async function openSaveFileAny() {
             originalBytes: decoded.originalBytes,
           },
           save: decoded.json,
-          meta: { path: file.name, size: file.size, lastModified: file.lastModified },
+          meta: { path: file.name, size: file.size, lastModified: file.lastModified, detectOk: !!detect.ok, missingCount: (detect.missing?.length ?? 0) },
         });
       } catch (e) {
         lastErr = e;
@@ -113,10 +118,11 @@ export async function openSaveFileAny() {
           const ab = await f.arrayBuffer();
           const bytes = new Uint8Array(ab);
           const decoded = await decodeToJson(bytes);
+          const detect = detectTcgShopSave(decoded.json);
           choices.push({
             source: { mode: "drop", fileHandle: null, dirHandle: null, displayName: f.name, codec: decoded.codec, originalBytes: decoded.originalBytes },
             save: decoded.json,
-            meta: { path: f.name, size: f.size, lastModified: f.lastModified },
+            meta: { path: f.name, size: f.size, lastModified: f.lastModified, detectOk: !!detect.ok, missingCount: (detect.missing?.length ?? 0) },
           });
         } catch (e) {
           lastErr = e;
@@ -140,7 +146,8 @@ async function decodeValidChoices(candidates, { max = 60 } = {}) {
       const ab = await c.file.arrayBuffer();
       const bytes = new Uint8Array(ab);
       const decoded = await decodeToJson(bytes);
-      valid.push({ candidate: c, decoded });
+      const detect = detectTcgShopSave(decoded.json);
+      valid.push({ candidate: c, decoded, detectOk: !!detect.ok, missing: detect.missing ?? [] });
     } catch (e) {
       lastErr = e;
     }
@@ -149,14 +156,33 @@ async function decodeValidChoices(candidates, { max = 60 } = {}) {
   return { valid, lastErr };
 }
 
+function addTop(list, item, { max, key }) {
+  list.push(item);
+  if (list.length <= max) return;
+  list.sort((a, b) => (key(b) ?? 0) - (key(a) ?? 0));
+  list.length = max;
+}
+
+function uniqByPath(candidates) {
+  const map = new Map();
+  for (const c of candidates) {
+    const k = c?.path || c?.name || c?.file?.name;
+    if (!k) continue;
+    if (!map.has(k)) map.set(k, c);
+  }
+  return [...map.values()];
+}
+
 export async function openSaveFolderFromDirectoryHandle(dirHandle) {
   if (!dirHandle) return null;
 
   // Cap scanning so selecting the wrong folder (e.g. a whole game install) doesn't hang forever.
   const MAX_FILES_SCANNED = 6500;
   const MAX_CANDIDATES = 260;
+  const MAX_CANDIDATES_MTIME = 260;
 
-  const candidates = [];
+  const bySize = [];
+  const byMtime = [];
   let scanned = 0;
   for await (const entry of walkDir(dirHandle, { maxDepth: 8 })) {
     scanned++;
@@ -166,23 +192,22 @@ export async function openSaveFolderFromDirectoryHandle(dirHandle) {
     if (!file) continue;
     if (file.size < 256) continue;
 
-    candidates.push({ ...entry, file });
-    if (candidates.length > MAX_CANDIDATES) {
-      candidates.sort((a, b) => b.file.size - a.file.size);
-      candidates.length = MAX_CANDIDATES;
-    }
+    const cand = { ...entry, file };
+    addTop(bySize, cand, { max: MAX_CANDIDATES, key: (x) => x?.file?.size ?? 0 });
+    addTop(byMtime, cand, { max: MAX_CANDIDATES_MTIME, key: (x) => x?.file?.lastModified ?? 0 });
 
     // Keep the UI responsive on large scans.
     if (scanned % 500 === 0) await new Promise((r) => setTimeout(r, 0));
   }
 
+  const candidates = uniqByPath([...bySize, ...byMtime]);
   if (!candidates.length) return null;
-  candidates.sort((a, b) => b.file.size - a.file.size);
+  candidates.sort((a, b) => (b.file.lastModified ?? 0) - (a.file.lastModified ?? 0) || b.file.size - a.file.size);
 
   const { valid, lastErr } = await decodeValidChoices(candidates, { max: 160 });
   if (!valid.length) throw lastErr ?? new Error("No decodable save payload found.");
 
-  const asChoice = ({ candidate: c, decoded }) => {
+  const asChoice = ({ candidate: c, decoded, detectOk, missing }) => {
     const display = c.path || c.file.name;
     return {
       source: {
@@ -194,12 +219,17 @@ export async function openSaveFolderFromDirectoryHandle(dirHandle) {
         originalBytes: decoded.originalBytes,
       },
       save: decoded.json,
-      meta: { path: display, size: c.file.size, lastModified: c.file.lastModified },
+      meta: { path: display, size: c.file.size, lastModified: c.file.lastModified, detectOk: !!detectOk, missingCount: (missing?.length ?? 0) },
     };
   };
 
   const choices = valid.map(asChoice);
-  choices.sort((a, b) => (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) || (b.meta?.size ?? 0) - (a.meta?.size ?? 0));
+  choices.sort(
+    (a, b) =>
+      (b.meta?.detectOk ? 1 : 0) - (a.meta?.detectOk ? 1 : 0) ||
+      (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) ||
+      (b.meta?.size ?? 0) - (a.meta?.size ?? 0)
+  );
   if (choices.length === 1) return choices[0];
   return { choices };
 }
@@ -278,16 +308,21 @@ export async function openSaveFolderViaInputFallback() {
   if (!files) return null;
 
   // Auto-find: biggest likely payloads first until one decodes cleanly.
-  const candidates = files
+  const filtered = files
     .filter((f) => (f?.size ?? 0) >= 256)
-    .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
-    .slice(0, 220);
+    .filter((f) => !shouldSkipName(f?.name))
+    .slice();
 
-  const asCandidates = candidates.map((file) => ({ file, name: file.name, path: file.webkitRelativePath || file.name, fileHandle: null, depth: 0 }));
-  const { valid, lastErr } = await decodeValidChoices(asCandidates, { max: 160 });
+  const bySize = filtered.slice().sort((a, b) => (b.size ?? 0) - (a.size ?? 0)).slice(0, 220);
+  const byMtime = filtered.slice().sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0)).slice(0, 220);
+  const candidates = uniqByPath(
+    [...bySize, ...byMtime].map((file) => ({ file, name: file.name, path: file.webkitRelativePath || file.name, fileHandle: null, depth: 0 }))
+  );
+
+  const { valid, lastErr } = await decodeValidChoices(candidates, { max: 200 });
   if (!valid.length) throw lastErr ?? new Error("No decodable save payload found.");
 
-  const choices = valid.map(({ candidate: c, decoded }) => {
+  const choices = valid.map(({ candidate: c, decoded, detectOk, missing }) => {
     const display = c.path || c.file.name;
     return {
       source: {
@@ -299,11 +334,16 @@ export async function openSaveFolderViaInputFallback() {
         originalBytes: decoded.originalBytes,
       },
       save: decoded.json,
-      meta: { path: display, size: c.file.size, lastModified: c.file.lastModified },
+      meta: { path: display, size: c.file.size, lastModified: c.file.lastModified, detectOk: !!detectOk, missingCount: (missing?.length ?? 0) },
     };
   });
 
-  choices.sort((a, b) => (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) || (b.meta?.size ?? 0) - (a.meta?.size ?? 0));
+  choices.sort(
+    (a, b) =>
+      (b.meta?.detectOk ? 1 : 0) - (a.meta?.detectOk ? 1 : 0) ||
+      (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) ||
+      (b.meta?.size ?? 0) - (a.meta?.size ?? 0)
+  );
   if (choices.length === 1) return choices[0];
   return { choices };
 }

@@ -65,7 +65,14 @@ function showSavePicker(choices) {
   state.pendingChoices = Array.isArray(choices) ? choices.slice() : [];
   sel.innerHTML = "";
 
-  const sorted = state.pendingChoices.slice().sort((a, b) => (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) || (b.meta?.size ?? 0) - (a.meta?.size ?? 0));
+  const sorted = state.pendingChoices
+    .slice()
+    .sort(
+      (a, b) =>
+        (b.meta?.detectOk ? 1 : 0) - (a.meta?.detectOk ? 1 : 0) ||
+        (b.meta?.lastModified ?? 0) - (a.meta?.lastModified ?? 0) ||
+        (b.meta?.size ?? 0) - (a.meta?.size ?? 0)
+    );
   state.pendingChoices = sorted;
 
   sorted.forEach((c, idx) => {
@@ -74,12 +81,17 @@ function showSavePicker(choices) {
     const size = c?.meta?.size != null ? fmtBytes(c.meta.size) : "";
     const stamp = c?.meta?.lastModified ? new Date(c.meta.lastModified).toLocaleString() : "";
     opt.value = String(idx);
-    opt.textContent = `${path}${size ? ` · ${size}` : ""}${stamp ? ` · ${stamp}` : ""}`;
+    const tag = c?.meta?.detectOk ? "[Save]" : "[Other]";
+    opt.textContent = `${tag} ${path}${size ? ` · ${size}` : ""}${stamp ? ` · ${stamp}` : ""}`;
     sel.appendChild(opt);
   });
 
   box.hidden = false;
-  setStatus("warn", `Multiple save candidates detected (${sorted.length}). Select the correct one, then click “Load Selected”.`);
+  const countSaves = sorted.filter((c) => !!c?.meta?.detectOk).length;
+  setStatus(
+    "warn",
+    `Multiple candidates detected (${sorted.length}${countSaves ? `, ${countSaves} look like real saves` : ""}). Select one, then click “Load Selected”.`
+  );
 }
 
 async function nextFrame() {
