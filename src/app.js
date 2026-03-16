@@ -375,11 +375,6 @@ async function loadSaveResult(result) {
   hideSavePicker();
 
   const detect = detectTcgShopSave(result.save);
-  if (!detect.ok) {
-    setStatus("bad", `This file does not look like a Trading Card Shop Simulator (Game Preview) save.\nMissing keys: ${detect.missing.slice(0, 12).join(", ")}${detect.missing.length > 12 ? ", …" : ""}`);
-    return;
-  }
-
   state.save = result.save;
   state.source = result.source;
   state.riskyEdited = false;
@@ -391,9 +386,12 @@ async function loadSaveResult(result) {
     state.source.mode === "folder-fallback"
       ? "\nNote: Loaded via browser folder fallback (read-only). Write-back is disabled; use Save (Download) then copy into place."
       : "";
-  setStatus("ok", `Loaded save: ${state.source.displayName}\nCodec: ${codec}\n${bakLine}${modeNote}`);
+  const detectNote = detect.ok
+    ? ""
+    : `\nWarning: Save signature check did not match expected keys.\nMissing keys (sample): ${detect.missing.slice(0, 12).join(", ")}${detect.missing.length > 12 ? ", …" : ""}\nThe editor will still load this file (use All Fields if panels look incomplete).`;
+  setStatus(detect.ok ? "ok" : "warn", `Loaded save: ${state.source.displayName}\nCodec: ${codec}\n${bakLine}${modeNote}${detectNote}`);
   renderAllPanels();
-  setPanelsVisible("player");
+  setPanelsVisible(detect.ok ? "player" : "raw");
 }
 
 async function doOpenFile() {
@@ -466,7 +464,7 @@ async function doOpenFolder() {
     const msg = e?.message ?? String(e);
     setStatus(
       "bad",
-      `Open folder failed: ${msg}\nTip: If Windows refuses selecting a save folder due to “system files”, use Open Save File and select the payload file inside the folder.`
+      `Open folder failed: ${msg}\nTip: If Windows refuses selecting the WGS folder due to “system files”, try selecting the long child folder inside \\wgs\\ (GUID-like name), or use Open Save File and pick the payload file inside that folder.`
     );
   }
 }
