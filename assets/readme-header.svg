@@ -39,14 +39,14 @@
     <path d="M113 116h26" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.28"/>
     <path d="M113 128h18" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.22"/>
 
-    <text x="196" y="112" fill="#f3f4ff" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="30" font-weight="800">
+    <text x="196" y="110" fill="#f3f4ff" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="28" font-weight="800">
       Trading Card Shop Simulator
-      <tspan x="196" dy="28" font-size="18" font-weight="700" fill-opacity="0.85">(Game Preview)</tspan>
+      <tspan x="196" dy="26" font-size="18" font-weight="700" fill-opacity="0.85">(Game Preview)</tspan>
     </text>
-    <text x="196" y="172" fill="#f3f4ff" fill-opacity="0.78" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="18" font-weight="600">
+    <text x="196" y="170" fill="#f3f4ff" fill-opacity="0.78" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="18" font-weight="600">
       Save Editor (card-themed • readable • safe-by-default)
     </text>
-    <text x="196" y="206" fill="#f3f4ff" fill-opacity="0.60" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="14" font-weight="500">
+    <text x="196" y="202" fill="#f3f4ff" fill-opacity="0.60" font-family="Segoe UI,system-ui,-apple-system,Arial" font-size="14" font-weight="500">
       Edit coins • levels • inventory totals/prices • binder progress • unlock flags
     </text>
   </g>
