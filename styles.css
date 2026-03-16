@@ -370,3 +370,22 @@ td input[type="checkbox"]{
   accent-color: var(--blue);
 }
 td input:disabled{ opacity:.55; cursor:not-allowed; }
+
+.kofi-widget{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:60;
+  padding:10px 14px;
+  border-radius:999px;
+  border:1px solid rgba(255,193,88,.6);
+  background:linear-gradient(180deg,#ffe7ad,#ffd675);
+  color:#2b210b;
+  text-decoration:none;
+  font-weight:700;
+  box-shadow:0 12px 24px rgba(0,0,0,.35);
+  transform:translateZ(0);
+  transition:transform .18s ease, filter .18s ease;
+}
+.kofi-widget:hover{transform:translateY(-1px);filter:saturate(1.05)}
+@media (max-width:740px){.kofi-widget{right:12px;bottom:12px;font-size:.9rem;padding:9px 12px}}
